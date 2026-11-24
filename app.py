@@ -1,348 +1,248 @@
-
 import streamlit as st
 import sqlite3
-import cv2
-import numpy as np
-import qrcode
-from io import BytesIO
+import uuid
 from datetime import datetime
+from streamlit_qrcode_scanner import qrcode_scanner
 
-st.set_page_config(
-    page_title="SRNHS ECO POINTS",
-    page_icon="♻️",
-    layout="centered"
-)
+st.set_page_config(page_title="SRNHS ECO POINTS", page_icon="♻️", layout="centered")
 
-SECTIONS = [
-    "7-Clark", "7-Cybernauts", "7-Archer",
-    "8-Euclid", "8-Phytagoras", "8-Euler", "8-Phyton",
-    "9-Azure", "9-Charles", "9-Einstein",
-    "10-Artificial Intelligence", "10-Alcala", "10-Alcaraz",
-    "11-Earth", "11-Mars", "11-Jupiter",
-    "12-Sapphire", "12-Pearl", "12-Ametyhst"
-]
+# Set ADMIN_PASSWORD in Streamlit Cloud > App settings > Secrets.
+# The fallback is for initial testing only. Change it before using the app at school.
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "CHANGE-THIS-ADMIN-PASSWORD")
 
-RATES = {
-    "Plastic Bottles": 5,
-    "Papers": 3
+DB_NAME = "eco_points.db"
+RATES = {"Plastic Bottles": 5, "Papers": 3}
+
+SECTIONS = {
+    "SEC-7-CLARK": "7-Clark",
+    "SEC-7-CYBERNAUTS": "7-Cybernauts",
+    "SEC-7-ARCHER": "7-Archer",
+    "SEC-8-EUCLID": "8-Euclid",
+    "SEC-8-PHYTAGORAS": "8-Phytagoras",
+    "SEC-8-EULER": "8-Euler",
+    "SEC-8-PHYTON": "8-Phyton",
+    "SEC-9-AZURE": "9-Azure",
+    "SEC-9-CHARLES": "9-Charles",
+    "SEC-9-EINSTEIN": "9-Einstein",
+    "SEC-10-AI": "10-Artificial Intelligence",
+    "SEC-10-ALCALA": "10-Alcala",
+    "SEC-10-ALCARAZ": "10-Alcaraz",
+    "SEC-11-EARTH": "11-Earth",
+    "SEC-11-MARS": "11-Mars",
+    "SEC-11-JUPITER": "11-Jupiter",
+    "SEC-12-SAPPHIRE": "12-Sapphire",
+    "SEC-12-PEARL": "12-Pearl",
+    "SEC-12-AMETYHST": "12-Ametyhst",
+    "SEC-JH-FACULTY": "JH-Faculty",
+    "SEC-SH-FACULTY": "SH-Faculty",
 }
 
-ADMIN_PASSWORD = "eco-demo-2026"
-DB = "eco_points.db"
-
-# DATABASE
-def connect_db():
-    return sqlite3.connect(DB)
+def db():
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 def setup_database():
-    with connect_db() as conn:
+    with db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                section TEXT,
-                material TEXT,
-                kilograms REAL,
-                points INTEGER,
-                date TEXT
+                transaction_id TEXT PRIMARY KEY,
+                section_id TEXT NOT NULL,
+                section_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                material TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                points INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL
             )
         """)
 
-setup_database()
-
-# SESSION
-defaults = {
-    "page": "welcome",
-    "section": "",
-    "material": "Plastic Bottles",
-    "kg": 1.0,
-    "pending": None
-}
-
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-def go(page):
-    st.session_state.page = page
-    st.rerun()
-
-def make_qr(section):
-    qr = qrcode.make(section)
-    output = BytesIO()
-    qr.save(output, format="PNG")
-    output.seek(0)
-    return output.getvalue()
-
-# HEADER
-st.title("♻️ SRNHS ECO POINTS")
-st.caption("QR Code-Based Incentives System for Recyclable Materials")
-st.divider()
-
-# WELCOME PAGE
-if st.session_state.page == "welcome":
-
-    st.title("WELCOME!")
-    st.write("Welcome to SRNHS ECO POINTS.")
-    st.write("Recycle today and earn Eco Points!")
-
-    if st.button("SCAN SECTION QR", use_container_width=True):
-        go("scan")
-
-    if st.button("SECTION QR CODES", use_container_width=True):
-        go("qr")
-
-    if st.button("ADMIN DASHBOARD", use_container_width=True):
-        go("admin_login")
-
-# QR SCANNER
-elif st.session_state.page == "scan":
-
-    st.header("SCAN SECTION QR")
-    st.write("Allow camera access and capture your section QR code.")
-
-    photo = st.camera_input("Open Camera")
-
-    if photo is not None:
-        image_bytes = np.frombuffer(
-            photo.getvalue(), np.uint8
-        )
-
-        image = cv2.imdecode(
-            image_bytes, cv2.IMREAD_COLOR
-        )
-
-        detector = cv2.QRCodeDetector()
-        qr_text, points, _ = detector.detectAndDecode(image)
-
-        if qr_text:
-            scanned = qr_text.strip()
-
-            if scanned in SECTIONS:
-                st.session_state.section = scanned
-                st.success("QR CODE DETECTED!")
-                st.success("WELCOME, " + scanned.upper() + "!")
-                st.button(
-                    "CONTINUE TO EXCHANGE",
-                    on_click=lambda: go("exchange"),
-                    use_container_width=True
-                )
-            else:
-                st.error("Unknown section QR code.")
-
-        else:
-            st.warning("QR code not detected. Try again.")
-
-    if st.button("BACK", use_container_width=True):
-        go("welcome")
-
-# EXCHANGE PAGE
-elif st.session_state.page == "exchange":
-
-    st.header("WELCOME, " + st.session_state.section.upper() + "!")
-
-    st.subheader("EXCHANGE YOUR RECYCLABLES")
-
-    st.write("Choose your recyclable material.")
-
-    st.session_state.material = st.selectbox(
-        "Material",
-        ["Plastic Bottles", "Papers"]
-    )
-
-    st.session_state.kg = st.number_input(
-        "Quantity (KG)",
-        min_value=0.1,
-        max_value=1000.0,
-        value=1.0,
-        step=0.1
-    )
-
-    points = round(
-        st.session_state.kg *
-        RATES[st.session_state.material]
-    )
-
-    st.metric("YOUR ECO POINTS", points)
-
-    if st.button("CONTINUE TO RECEIPT",
-                 use_container_width=True):
-        st.session_state.pending = {
-            "section": st.session_state.section,
-            "material": st.session_state.material,
-            "kg": st.session_state.kg,
-            "points": points
-        }
-        go("receipt")
-
-    if st.button("BACK TO QR", use_container_width=True):
-        st.session_state.section = ""
-        go("scan")
-
-# RECEIPT PAGE
-elif st.session_state.page == "receipt":
-
-    st.header("TRANSACTION RECEIPT")
-
-    data = st.session_state.pending
-
-    if data is None:
-        st.warning("No transaction found.")
-        if st.button("BACK TO QR"):
-            go("scan")
-    else:
-        st.write("Section:", data["section"])
-        st.write("Material:", data["material"])
-        st.write("Quantity:", data["kg"], "KG")
-        st.write("Points:", data["points"])
-
-        st.info("Please review your transaction.")
-
-        if st.button("CONFIRM RECEIPT",
-                     use_container_width=True):
-            go("verify")
-
-        if st.button("BACK TO EXCHANGE",
-                     use_container_width=True):
-            go("exchange")
-
-# ADMIN VERIFICATION
-elif st.session_state.page == "verify":
-
-    st.header("ADMIN VERIFICATION")
-
-    password = st.text_input(
-        "Enter Admin Password",
-        type="password"
-    )
-
-    if st.button("VERIFY AND RECORD",
-                 use_container_width=True):
-
-        if password == ADMIN_PASSWORD:
-
-            data = st.session_state.pending
-
-            with connect_db() as conn:
-                conn.execute("""
-                    INSERT INTO transactions
-                    (section, material, kilograms, points, date)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    data["section"],
-                    data["material"],
-                    data["kg"],
-                    data["points"],
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ))
-
-            go("success")
-
-        else:
-            st.error("Incorrect admin password.")
-
-    if st.button("BACK TO RECEIPT"):
-        go("receipt")
-
-# SUCCESS PAGE
-elif st.session_state.page == "success":
-
-    st.success("TRANSACTION SUCCESSFULLY RECORDED!")
-    st.balloons()
-
-    data = st.session_state.pending
-
-    st.write("Section:", data["section"])
-    st.write("Points Earned:", data["points"])
-
-    if st.button("SCAN NEXT SECTION QR",
-                 use_container_width=True):
-        st.session_state.section = ""
-        st.session_state.pending = None
-        go("scan")
-
-    if st.button("HOME", use_container_width=True):
-        st.session_state.section = ""
-        st.session_state.pending = None
-        go("welcome")
-
-# QR CODE GENERATOR
-elif st.session_state.page == "qr":
-
-    st.header("SECTION QR CODES")
-    st.write("Each section has its own unique QR code.")
-
-    selected = st.selectbox(
-        "Choose Section",
-        SECTIONS
-    )
-
-    qr_image = make_qr(selected)
-
-    st.image(qr_image, width=250)
-
-    st.download_button(
-        "DOWNLOAD SECTION QR",
-        data=qr_image,
-        file_name=selected.replace(" ", "_") + "_QR.png",
-        mime="image/png",
-        use_container_width=True
-    )
-
-    if st.button("BACK TO HOME"):
-        go("welcome")
-
-# ADMIN LOGIN
-elif st.session_state.page == "admin_login":
-
-    st.header("ADMIN LOGIN")
-
-    password = st.text_input(
-        "Admin Password",
-        type="password"
-    )
-
-    if st.button("LOGIN"):
-        if password == ADMIN_PASSWORD:
-            go("admin")
-        else:
-            st.error("Incorrect password.")
-
-    if st.button("BACK"):
-        go("welcome")
-
-# ADMIN DASHBOARD
-elif st.session_state.page == "admin":
-
-    st.header("ADMIN DASHBOARD")
-
-    with connect_db() as conn:
-        rows = conn.execute("""
-            SELECT section, material, kilograms, points, date
-            FROM transactions
-            ORDER BY id DESC
+def decode_section(raw_value):
+    if not raw_value:
+        return None
+    value = raw_value.strip()
+    prefix = "ecopoints://section/"
+    if value.startswith(prefix):
+        section_id = value[len(prefix):].strip().upper()
+        return section_id if section_id in SECTIONS else None
+    # Also accept a plain section ID if QR format is changed later.
+    section_id = value.upper()
+    return section_id if section_id in SECTIONS else None
+
+def save_transaction(tx):
+    with db() as conn:
+        conn.execute("""
+            INSERT INTO transactions
+            (transaction_id, section_id, section_name, category, material,
+             quantity, points, created_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            tx["id"], tx["section_id"], tx["section"], tx["category"],
+            tx["material"], tx["quantity"], tx["points"],
+            tx["created_at"], "Verified"
+        ))
+
+def get_history():
+    with db() as conn:
+        return conn.execute("""
+            SELECT transaction_id, section_name, category, material,
+                   quantity, points, created_at, status
+            FROM transactions ORDER BY created_at DESC
         """).fetchall()
 
-    st.subheader("SECTION POINTS")
+def reset_for_next_scan():
+    for key in ["section_id", "section", "material", "quantity", "pending_tx"]:
+        st.session_state.pop(key, None)
+    st.session_state.page = "Scan QR"
 
-    for section in SECTIONS:
-        total = sum(
-            row[3] for row in rows
-            if row[0] == section
-        )
-        st.write(section, "-", total, "points")
+setup_database()
+if "page" not in st.session_state:
+    st.session_state.page = "Scan QR"
+
+st.title("♻️ SRNHS ECO POINTS")
+st.caption("QR Code-Based Incentives System for Recyclables")
+
+with st.sidebar:
+    st.header("Navigation")
+    if st.button("Scan Section QR", use_container_width=True):
+        st.session_state.page = "Scan QR"
+    if st.button("Admin Dashboard", use_container_width=True):
+        st.session_state.page = "Admin"
+    st.divider()
+    st.caption("Plastic Bottles: 5 points/kg")
+    st.caption("Papers: 3 points/kg")
+
+if st.session_state.page == "Scan QR":
+    st.header("Scan Section QR Code")
+    st.write("Iharap ang official section QR code sa camera.")
+    try:
+        scanned_value = qrcode_scanner()
+    except Exception as exc:
+        scanned_value = None
+        st.error("Hindi mabuksan ang QR scanner. Payagan ang camera access sa browser at i-refresh ang page.")
+        st.caption(f"Scanner detail: {exc}")
+
+    if scanned_value:
+        section_id = decode_section(scanned_value)
+        if section_id:
+            st.session_state.section_id = section_id
+            st.session_state.section = SECTIONS[section_id]
+            st.session_state.page = "Welcome"
+            st.rerun()
+        else:
+            st.error("Hindi kilala ang QR code na ito. Gamitin lamang ang official SRNHS section QR codes.")
 
     st.divider()
-    st.subheader("TRANSACTION HISTORY")
+    st.subheader("Camera not working?")
+    st.info("Subukan ang Chrome browser, i-check ang site camera permission, at tiyaking HTTPS ang app link.")
 
-    if rows:
+elif st.session_state.page == "Welcome":
+    st.title(f"WELCOME, {st.session_state.section.upper()}!")
+    st.write("Welcome to SRNHS ECO POINTS.")
+    if st.button("Continue", type="primary", use_container_width=True):
+        st.session_state.page = "Exchange Form"
+        st.rerun()
+    if st.button("Scan Another Section", use_container_width=True):
+        reset_for_next_scan()
+        st.rerun()
+
+elif st.session_state.page == "Exchange Form":
+    st.header("Exchange Form")
+    st.write(f"**Section:** {st.session_state.section}")
+    category = st.selectbox("Category", ["Recyclables"])
+    material = st.selectbox("Material", ["Plastic Bottles", "Papers"])
+    quantity = st.number_input("Quantity (kg)", min_value=0.1, step=0.1, format="%.1f")
+    points = int(round(quantity * RATES[material]))
+    st.metric("Estimated Eco Points", points)
+
+    if st.button("Review Transaction", type="primary", use_container_width=True):
+        st.session_state.material = material
+        st.session_state.quantity = float(quantity)
+        st.session_state.pending_tx = {
+            "id": uuid.uuid4().hex[:12].upper(),
+            "section_id": st.session_state.section_id,
+            "section": st.session_state.section,
+            "category": category,
+            "material": material,
+            "quantity": float(quantity),
+            "points": points,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        st.session_state.page = "Review"
+        st.rerun()
+
+    if st.button("Cancel / Scan Another Section", use_container_width=True):
+        reset_for_next_scan()
+        st.rerun()
+
+elif st.session_state.page == "Review":
+    st.header("Review Transaction")
+    tx = st.session_state.pending_tx
+    st.write("Pakisuri kung tama ang mga detalye bago i-verify.")
+    st.table({
+        "Details": ["Section", "Category", "Material", "Quantity", "Points Earned"],
+        "Information": [
+            tx["section"], tx["category"], tx["material"],
+            f'{tx["quantity"]:.1f} kg', str(tx["points"])
+        ]
+    })
+    st.subheader("Verification of Transaction Code")
+    password = st.text_input("Admin verification password", type="password")
+    if st.button("Verified Transaction", type="primary", use_container_width=True):
+        if password == ADMIN_PASSWORD and ADMIN_PASSWORD != "CHANGE-THIS-ADMIN-PASSWORD":
+            save_transaction(tx)
+            st.session_state.page = "Receipt"
+            st.rerun()
+        elif ADMIN_PASSWORD == "CHANGE-THIS-ADMIN-PASSWORD":
+            st.error("I-set muna ng admin ang sariling password sa Streamlit Cloud Secrets.")
+        else:
+            st.error("Mali ang admin password. Hindi na-record ang transaction.")
+
+    if st.button("Back to Edit Form", use_container_width=True):
+        st.session_state.page = "Exchange Form"
+        st.rerun()
+
+elif st.session_state.page == "Receipt":
+    st.header("Transaction Receipt")
+    tx = st.session_state.pending_tx
+    st.success("Transaction successfully verified and recorded!")
+    st.write(f"**Transaction Code:** {tx['id']}")
+    st.write(f"**Section:** {tx['section']}")
+    st.write(f"**Category:** {tx['category']}")
+    st.write(f"**Material:** {tx['material']}")
+    st.write(f"**Quantity:** {tx['quantity']:.1f} kg")
+    st.write(f"**Points Earned:** {tx['points']}")
+    st.write("**Transaction Status:** Verified")
+    st.divider()
+    if st.button("Scan Next Section QR", type="primary", use_container_width=True):
+        reset_for_next_scan()
+        st.rerun()
+
+elif st.session_state.page == "Admin":
+    st.header("Admin Dashboard")
+    admin_pw = st.text_input("Admin password to view records", type="password", key="dashboard_pw")
+    if admin_pw == ADMIN_PASSWORD and ADMIN_PASSWORD != "CHANGE-THIS-ADMIN-PASSWORD":
+        rows = get_history()
+        st.subheader("Points per Section")
+        totals = {name: 0 for name in SECTIONS.values()}
         for row in rows:
-            st.write(
-                f"{row[0]} | {row[1]} | "
-                f"{row[2]} KG | {row[3]} points | {row[4]}"
+            totals[row[1]] = totals.get(row[1], 0) + row[5]
+        st.dataframe(
+            [{"Section": name, "Total Points": pts} for name, pts in totals.items()],
+            use_container_width=True, hide_index=True
+        )
+        st.subheader("Transaction History")
+        if rows:
+            st.dataframe(
+                [{
+                    "Transaction Code": r[0], "Section": r[1], "Category": r[2],
+                    "Material": r[3], "Quantity (kg)": r[4], "Points": r[5],
+                    "Date": r[6], "Status": r[7]
+                } for r in rows],
+                use_container_width=True, hide_index=True
             )
-            st.divider()
-    else:
-        st.info("No transactions recorded yet.")
+        else:
+            st.info("Wala pang recorded transactions.")
+    elif admin_pw:
+        st.error("Mali ang password o hindi pa naka-set ang admin password.")
 
-    if st.button("BACK TO HOME"):
-        go("welcome")
+st.caption("Reminder: Streamlit Cloud local SQLite storage may reset when the app restarts. For permanent school records, connect a hosted database before actual deployment.")
