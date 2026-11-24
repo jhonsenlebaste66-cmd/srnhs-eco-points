@@ -6,6 +6,37 @@ from streamlit_qrcode_scanner import qrcode_scanner
 
 st.set_page_config(page_title="SRNHS ECO POINTS", page_icon="♻️", layout="centered")
 
+st.markdown("""
+<style>
+.stApp {
+    background-color: #FFFFFF;
+    color: #14532D;
+}
+
+h1, h2, h3 {
+    color: #168447 !important;
+}
+
+.stButton > button {
+    background-color: #168447;
+    color: white;
+    border: 1px solid #168447;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.stButton > button:hover {
+    background-color: #116B38;
+    color: white;
+    border-color: #116B38;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #F0FFF4;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Set ADMIN_PASSWORD in Streamlit Cloud > App settings > Secrets.
 # The fallback is for initial testing only. Change it before using the app at school.
 ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "CHANGE-THIS-ADMIN-PASSWORD")
